@@ -46,6 +46,12 @@ struct ContentView: View {
                     Annotation(location.name, coordinate: location.coordinate) {
                         LocationAnnotationView(isSelected: selectedLocation == location)
                             .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                            .onTapGesture {
+                                // Bezpośredni wybór lokalizacji po kliknięciu
+                                selectedLocation = location
+                                // Opcjonalnie: Automatyczne otwarcie szczegółów po kliknięciu
+                                // sheetLocation = location 
+                            }
                     }
                     .tag(location) // Ważne: łączy znacznik z wyborem
                 }
@@ -107,6 +113,14 @@ struct ContentView: View {
                             )
                             .tag(location) // Ważne: łączy kartę z wyborem
                             .padding(.horizontal, 20)
+                            .onTapGesture {
+                                // Otwórz szczegóły również po kliknięciu w samą kartę (nie tylko guzik)
+                                if selectedLocation == location {
+                                     sheetLocation = location
+                                } else {
+                                    selectedLocation = location
+                                }
+                            }
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never)) // Styl karuzeli bez wskaźników
