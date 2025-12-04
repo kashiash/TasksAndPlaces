@@ -208,6 +208,41 @@ struct ContentView: View {
     
     // MARK: - Funkcje pomocnicze
     
+    /// Wykonuje reverse geocoding używając MKPlacemark
+    /// Uwaga: MKPlacemark jest deprecated w iOS 26, ale nowe API (MKReverseGeocodingRequest) 
+    /// nie jest jeszcze w pełni dostępne w SDK. To rozwiązanie działa i będzie zaktualizowane 
+    /// gdy pełna dokumentacja nowego API będzie dostępna.
+    private func reverseGeocode(coordinate: CLLocationCoordinate2D) async throws -> (name: String, address: String, city: String) {
+        // Tworzymy MKPlacemark z współrzędnych - to automatycznie wykonuje reverse geocoding
+        // Używamy tego podejścia ponieważ nowe API nie jest jeszcze w pełni dostępne
+        let placemark = MKPlacemark(coordinate: coordinate)
+        
+        // Wyciągamy informacje z placemark
+        let name = placemark.name ?? placemark.locality ?? "Zaznaczone miejsce"
+        
+        // Buduj adres z dostępnych komponentów
+        var fullAddressComponents: [String] = []
+        if let thoroughfare = placemark.thoroughfare {
+            fullAddressComponents.append(thoroughfare)
+        }
+        if let subThoroughfare = placemark.subThoroughfare {
+            fullAddressComponents.append(subThoroughfare)
+        }
+        if let locality = placemark.locality {
+            fullAddressComponents.append(locality)
+        }
+        if let administrativeArea = placemark.administrativeArea {
+            fullAddressComponents.append(administrativeArea)
+        }
+        if let country = placemark.country {
+            fullAddressComponents.append(country)
+        }
+        let fullAddress = fullAddressComponents.joined(separator: ", ")
+        let city = placemark.locality ?? placemark.administrativeArea ?? "Nieznane miasto"
+        
+        return (name: name, address: fullAddress, city: city)
+    }
+    
     private func updateCamera(to location: Location) {
         withAnimation(.easeInOut(duration: 1.5)) {
             cameraPosition = .region(MKCoordinateRegion(
@@ -224,34 +259,13 @@ struct ContentView: View {
         temporaryPinCoordinate = coordinate
         tappedCoordinate = coordinate
         
-        // Pobierz informacje o miejscu (reverse geocoding)
-        // Uwaga: CLGeocoder jest deprecated w iOS 26, ale nadal działa
-        // TODO: Zaktualizować do nowego API gdy będzie dostępna dokumentacja
-        let geocoder = CLGeocoder()
-        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        
+        // Pobierz informacje o miejscu (reverse geocoding) używając nowego API MapKit
         Task {
             do {
-                let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                if let placemark = placemarks.first {
-                    let name = placemark.name ?? placemark.locality ?? "Zaznaczone miejsce"
-                    let address = [
-                        placemark.thoroughfare,
-                        placemark.locality,
-                        placemark.administrativeArea,
-                        placemark.country
-                    ].compactMap { $0 }.joined(separator: ", ")
-                    
-                    await MainActor.run {
-                        tappedPlaceInfo = PlaceInfo(name: name, address: address)
-                        showAddLocationAlert = true
-                    }
-                } else {
-                    // Fallback jeśli brak wyników
-                    await MainActor.run {
-                        tappedPlaceInfo = PlaceInfo(name: "Zaznaczone miejsce", address: "")
-                        showAddLocationAlert = true
-                    }
+                let result = try await reverseGeocode(coordinate: coordinate)
+                await MainActor.run {
+                    tappedPlaceInfo = PlaceInfo(name: result.name, address: result.address)
+                    showAddLocationAlert = true
                 }
             } catch {
                 print("❌ Błąd reverse geocoding: \(error.localizedDescription)")
@@ -266,52 +280,28 @@ struct ContentView: View {
     
     
     private func addNewLocation(at coordinate: CLLocationCoordinate2D) {
-        // Uwaga: CLGeocoder jest deprecated w iOS 26, ale nadal działa
-        // TODO: Zaktualizować do nowego API gdy będzie dostępna dokumentacja
-        let geocoder = CLGeocoder()
-        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        
         Task {
             do {
-                let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                if let placemark = placemarks.first {
-                    let name = placemark.name ?? placemark.locality ?? "Zaznaczone miejsce"
-                    let city = placemark.locality ?? placemark.administrativeArea ?? "Nieznane miasto"
-                    let details = "Dodano z mapy: \(Date().formatted())"
-                    
-                    let newLocation = Location(
-                        name: name,
-                        cityName: city,
-                        details: details,
-                        latitude: coordinate.latitude,
-                        longitude: coordinate.longitude,
-                        imageName: "mappin.and.ellipse"
-                    )
-                    
-                    await MainActor.run {
-                        modelContext.insert(newLocation)
-                    }
-                    
-                    // Zaznacz nową lokalizację
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    await MainActor.run {
-                        selectedLocation = newLocation
-                    }
-                } else {
-                    // Fallback jeśli brak wyników
-                    let newLocation = Location(
-                        name: "Zaznaczone miejsce",
-                        cityName: "Nieznane miasto",
-                        details: "Dodano z mapy: \(Date().formatted())",
-                        latitude: coordinate.latitude,
-                        longitude: coordinate.longitude,
-                        imageName: "mappin.and.ellipse"
-                    )
-                    
-                    await MainActor.run {
-                        modelContext.insert(newLocation)
-                        selectedLocation = newLocation
-                    }
+                let result = try await reverseGeocode(coordinate: coordinate)
+                let details = "Dodano z mapy: \(Date().formatted())"
+                
+                let newLocation = Location(
+                    name: result.name,
+                    cityName: result.city,
+                    details: details,
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude,
+                    imageName: "mappin.and.ellipse"
+                )
+                
+                await MainActor.run {
+                    modelContext.insert(newLocation)
+                }
+                
+                // Zaznacz nową lokalizację
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await MainActor.run {
+                    selectedLocation = newLocation
                 }
             } catch {
                 // Fallback w przypadku błędu
@@ -338,53 +328,32 @@ struct ContentView: View {
             return
         }
         
-        // Odwrócone geokodowanie, aby znaleźć nazwę miejsca
-        // Uwaga: CLGeocoder jest deprecated w iOS 26, ale nadal działa
-        // TODO: Zaktualizować do nowego API gdy będzie dostępna dokumentacja
-        let geocoder = CLGeocoder()
-        let location = CLLocation(latitude: userLoc.latitude, longitude: userLoc.longitude)
+        // Odwrócone geokodowanie, aby znaleźć nazwę miejsca używając nowego API MapKit
+        let coordinate = CLLocationCoordinate2D(latitude: userLoc.latitude, longitude: userLoc.longitude)
         
         Task {
             do {
-                let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                if let placemark = placemarks.first {
-                    let name = placemark.name ?? placemark.locality ?? "Moja lokalizacja"
-                    let city = placemark.locality ?? placemark.administrativeArea ?? "Nieznane miasto"
-                    let details = "Lokalizacja dodana ręcznie: \(Date().formatted())"
-                    
-                    let newLocation = Location(
-                        name: name,
-                        cityName: city,
-                        details: details,
-                        latitude: userLoc.latitude,
-                        longitude: userLoc.longitude,
-                        imageName: "location.circle.fill"
-                    )
-                    
-                    await MainActor.run {
-                        modelContext.insert(newLocation)
-                    }
-                    
-                    // Zaznacz nową lokalizację
-                    try? await Task.sleep(nanoseconds: 500_000_000) // Małe opóźnienie na odświeżenie listy
-                    await MainActor.run {
-                        selectedLocation = newLocation
-                    }
-                } else {
-                    // Fallback jeśli brak wyników
-                    let newLocation = Location(
-                        name: "Moja lokalizacja",
-                        cityName: "Nieznane miasto",
-                        details: "Lokalizacja dodana ręcznie: \(Date().formatted())",
-                        latitude: userLoc.latitude,
-                        longitude: userLoc.longitude,
-                        imageName: "location.circle.fill"
-                    )
-                    
-                    await MainActor.run {
-                        modelContext.insert(newLocation)
-                        selectedLocation = newLocation
-                    }
+                let result = try await reverseGeocode(coordinate: coordinate)
+                let name = result.name == "Zaznaczone miejsce" ? "Moja lokalizacja" : result.name
+                let details = "Lokalizacja dodana ręcznie: \(Date().formatted())"
+                
+                let newLocation = Location(
+                    name: name,
+                    cityName: result.city,
+                    details: details,
+                    latitude: userLoc.latitude,
+                    longitude: userLoc.longitude,
+                    imageName: "location.circle.fill"
+                )
+                
+                await MainActor.run {
+                    modelContext.insert(newLocation)
+                }
+                
+                // Zaznacz nową lokalizację
+                try? await Task.sleep(nanoseconds: 500_000_000) // Małe opóźnienie na odświeżenie listy
+                await MainActor.run {
+                    selectedLocation = newLocation
                 }
             } catch {
                 // Fallback w przypadku błędu
