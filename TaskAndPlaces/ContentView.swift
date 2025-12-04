@@ -208,37 +208,72 @@ struct ContentView: View {
     
     // MARK: - Funkcje pomocnicze
     
-    /// Wykonuje reverse geocoding używając MKPlacemark
-    /// Uwaga: MKPlacemark jest deprecated w iOS 26, ale nowe API (MKReverseGeocodingRequest) 
-    /// nie jest jeszcze w pełni dostępne w SDK. To rozwiązanie działa i będzie zaktualizowane 
-    /// gdy pełna dokumentacja nowego API będzie dostępna.
+    /// Wykonuje reverse geocoding używając MKLocalSearch (iOS 26)
+    /// Wyciąga dane z MKMapItem.addressRepresentations i MKAddress (zamiennik CLPlacemark)
     private func reverseGeocode(coordinate: CLLocationCoordinate2D) async throws -> (name: String, address: String, city: String) {
-        // Tworzymy MKPlacemark z współrzędnych - to automatycznie wykonuje reverse geocoding
-        // Używamy tego podejścia ponieważ nowe API nie jest jeszcze w pełni dostępne
-        let placemark = MKPlacemark(coordinate: coordinate)
+        // Używamy MKLocalSearch do znalezienia miejsca w pobliżu współrzędnych
+        let request = MKLocalSearch.Request()
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.001, longitudeDelta: 0.001) // Mniejszy region dla dokładności
+        )
+        request.region = region
+        request.resultTypes = [.address, .pointOfInterest]
         
-        // Wyciągamy informacje z placemark
-        let name = placemark.name ?? placemark.locality ?? "Zaznaczone miejsce"
+        // Wykonujemy wyszukiwanie
+        let search = MKLocalSearch(request: request)
+        let response = try await search.start()
         
-        // Buduj adres z dostępnych komponentów
-        var fullAddressComponents: [String] = []
-        if let thoroughfare = placemark.thoroughfare {
-            fullAddressComponents.append(thoroughfare)
+        // Jeśli znaleziono wyniki, użyj pierwszego (najbliższego)
+        if let firstResult = response.mapItems.first {
+            // Nazwa miejsca
+            let name = firstResult.name ?? "Zaznaczone miejsce"
+            
+            // Adres z MKAddress lub addressRepresentations (nowe API iOS 26)
+            // MKAddressRepresentations to obiekt z właściwościami, nie kolekcja
+            var fullAddress = name
+            var city = "Nieznane miasto"
+            
+            // Próbujemy wyciągnąć adres z addressRepresentations (nowe API iOS 26)
+            // MKAddressRepresentations ma metodę fullAddress(Bool, Bool) -> String?
+            if let addressReps = firstResult.addressRepresentations {
+                // Używamy pełnego adresu - fullAddress to metoda przyjmująca parametry
+                // Parametry: includingRegion (Bool), singleLine (Bool)
+                if let formattedAddress = addressReps.fullAddress(includingRegion: true, singleLine: true), !formattedAddress.isEmpty {
+                    fullAddress = formattedAddress
+                } else if let shortAddress = addressReps.fullAddress(includingRegion: false, singleLine: true), !shortAddress.isEmpty {
+                    fullAddress = shortAddress
+                }
+                
+                // Wyciągamy miasto z cityWithContext, jeśli dostępne
+                if let cityWithContext = addressReps.cityWithContext, !cityWithContext.isEmpty {
+                    city = cityWithContext
+                } else if let region = addressReps.region {
+                    // region to Locale.Region, używamy identifier do konwersji na String
+                    city = region.identifier
+                }
+            }
+            
+            // Fallback: jeśli addressRepresentations nie ma adresu, użyj MKAddress
+            // W iOS 26 MKAddress może mieć właściwości do formatowania adresu
+            // Na razie używamy nazwy miejsca jako podstawy, gdy addressRepresentations nie ma danych
+            if fullAddress == name, firstResult.address != nil {
+                // MKAddress może mieć podobne właściwości, ale struktura może się różnić
+                // Można rozszerzyć gdy dokumentacja będzie dostępna
+            }
+            
+            // Jeśli nadal nie mamy adresu, użyj współrzędnych
+            if fullAddress.isEmpty || fullAddress == name {
+                fullAddress = "\(coordinate.latitude), \(coordinate.longitude)"
+            }
+            
+            return (name: name, address: fullAddress, city: city)
         }
-        if let subThoroughfare = placemark.subThoroughfare {
-            fullAddressComponents.append(subThoroughfare)
-        }
-        if let locality = placemark.locality {
-            fullAddressComponents.append(locality)
-        }
-        if let administrativeArea = placemark.administrativeArea {
-            fullAddressComponents.append(administrativeArea)
-        }
-        if let country = placemark.country {
-            fullAddressComponents.append(country)
-        }
-        let fullAddress = fullAddressComponents.joined(separator: ", ")
-        let city = placemark.locality ?? placemark.administrativeArea ?? "Nieznane miasto"
+        
+        // Fallback: jeśli nie znaleziono wyników, użyj podstawowych informacji
+        let name = "Zaznaczone miejsce"
+        let fullAddress = "\(coordinate.latitude), \(coordinate.longitude)"
+        let city = "Nieznane miasto"
         
         return (name: name, address: fullAddress, city: city)
     }

@@ -20,6 +20,8 @@
 
 - jesli w trakcie zmiany kodu, poprawy bledow chcesz zminic framework, zapytaj njapierw czy mozesz go zminic. uzuasadnij zmiane i przekonaj mnie do tego. probowanie na glupoa nie wchodzi w gre. chce dostac info na zmiane dlatego ze, jak mas zkilka do wybory wybieraj najnowszy. unikaj framerokow deprecated, chyba ze juz dostales kod z takim frameworkiem, to uzywaj tego co jest. chyba ze ma braki i tezba go zmienic na lepszy nowszy.
 
+- **Przestarzałe elementy iOS**: Zawsze sprawdzaj plik `docs/ios-deprecated.md` przed użyciem frameworków/klas. Jeśli znajdziesz przestarzały element w kodzie lub zostanie zgłoszony, zaktualizuj listę w tym pliku (dodaj do tabeli i zaktualizuj sekcję "Historia zmian").
+
 ## General Guidelines
 
 - Swift 6 + SwiftUI 6 dla iOS 18+ capabilities.
