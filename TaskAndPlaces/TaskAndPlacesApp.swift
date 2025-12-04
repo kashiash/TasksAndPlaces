@@ -12,7 +12,7 @@ import SwiftData
 struct TaskAndPlacesApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Location.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -22,10 +22,19 @@ struct TaskAndPlacesApp: App {
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()
+    
+    // Inicjalizacja loadera danych
+    @MainActor
+    private func seedData() {
+        DataLoader.shared.seedData(context: sharedModelContainer.mainContext)
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    seedData()
+                }
         }
         .modelContainer(sharedModelContainer)
     }

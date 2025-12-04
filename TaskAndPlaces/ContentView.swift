@@ -7,22 +7,29 @@
 
 import SwiftUI
 import MapKit
+import SwiftData
 
 struct ContentView: View {
+    // MARK: - Dane SwiftData
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Location.createdAt, order: .reverse) private var locations: [Location]
+    
     // MARK: - Stan Aplikacji
     // Menedżer lokalizacji użytkownika
     @State private var locationManager = LocationManager()
     
-    // Wybrana lokalizacja (domyślnie pierwsza)
-    @State private var selectedLocation: Location? = testLocations.first
+    // Wybrana lokalizacja
+    @State private var selectedLocation: Location?
+    
     // Pozycja kamery mapy
-    // Zwiększamy 'delta' do 0.1, aby widok nie był zbyt zbliżony na start
-    @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
-        center: testLocations.first!.coordinate,
-        span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
-    ))
+    @State private var cameraPosition: MapCameraPosition = .automatic
+    
     // Stan dla arkusza szczegółów
     @State private var sheetLocation: Location? = nil
+    
+    // Stan dla arkusza wyszukiwania
+    @State private var showSearchSheet = false
+    
     // Stan trasy
     @State private var route: MKRoute? // Przechowuje wyliczoną trasę
     
@@ -34,7 +41,7 @@ struct ContentView: View {
                 UserAnnotation()
                 
                 // Znaczniki miejsc
-                ForEach(testLocations) { location in
+                ForEach(locations) { location in
                     // MARK: - Warstwa 1: Niestandardowe Znaczniki
                     Annotation(location.name, coordinate: location.coordinate) {
                         LocationAnnotationView(isSelected: selectedLocation == location)
@@ -60,43 +67,65 @@ struct ContentView: View {
             }
             .ignoresSafeArea()
             
-            // MARK: - Warstwa 2: UI Overlay - Karuzela Kart
+            // MARK: - Warstwa 2: UI Overlay
             VStack {
+                // Górny pasek z przyciskami
+                HStack {
+                    Spacer()
+                    
+                    Menu {
+                        Button(action: addCurrentLocation) {
+                            Label("Bieżąca lokalizacja", systemImage: "location.fill")
+                        }
+                        Button(action: { showSearchSheet = true }) {
+                            Label("Szukaj adresu", systemImage: "magnifyingglass")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title2)
+                            .padding()
+                            .background(.thinMaterial)
+                            .clipShape(Circle())
+                            .shadow(radius: 4)
+                    }
+                    .padding()
+                }
+                
                 Spacer()
                 
-                TabView(selection: $selectedLocation) {
-                    ForEach(testLocations) { location in
-                        LocationCardView(
-                            location: location,
-                            isSelected: selectedLocation == location,
-                            onReadMore: {
-                                // Przypisujemy lokalizację do zmiennej arkusza
-                                sheetLocation = location
-                            }
-                        )
-                        .tag(location) // Ważne: łączy kartę z wyborem
-                        .padding(.horizontal, 20)
+                // Karuzela Kart
+                if !locations.isEmpty {
+                    TabView(selection: $selectedLocation) {
+                        ForEach(locations) { location in
+                            LocationCardView(
+                                location: location,
+                                isSelected: selectedLocation == location,
+                                onReadMore: {
+                                    // Przypisujemy lokalizację do zmiennej arkusza
+                                    sheetLocation = location
+                                }
+                            )
+                            .tag(location) // Ważne: łączy kartę z wyborem
+                            .padding(.horizontal, 20)
+                        }
                     }
+                    .tabViewStyle(.page(indexDisplayMode: .never)) // Styl karuzeli bez wskaźników
+                    .frame(height: 200)
+                    .padding(.bottom, 40) // Odstęp od Safe Area
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never)) // Styl karuzeli bez wskaźników
-                .frame(height: 200)
-                .padding(.bottom, 40) // Odstęp od Safe Area (uwzględnienie iPhone'ów bez przycisku Home)
             }
         }
         // MARK: - Synchronizacja (Logika biznesowa)
-        // Scenariusz 1: Przesuwanie Karuzeli - Kamera płynnie leci do nowej lokalizacji
-        // Scenariusz 2: Kliknięcie Znacznika - Karuzela automatycznie przewija się
+        .onAppear {
+            // Ustawienie początkowej kamery na pierwszy element, jeśli nie ustawiona
+            if let first = locations.first, selectedLocation == nil {
+                selectedLocation = first
+                updateCamera(to: first)
+            }
+        }
         .onChange(of: selectedLocation) { oldValue, newLocation in
             if let newLocation = newLocation {
-                // Fly-over animation - płynny lot kamery z dostosowaniem zoomu
-                // Dłuższy czas animacji dla płynniejszego lotu przy większej liczbie punktów
-                withAnimation(.easeInOut(duration: 1.5)) {
-                    cameraPosition = .region(MKCoordinateRegion(
-                        center: newLocation.coordinate,
-                        // Mniejsza delta = większy zoom (bliżej ziemi)
-                        span: MKCoordinateSpan(latitudeDelta: 0.015, longitudeDelta: 0.015)
-                    ))
-                }
+                updateCamera(to: newLocation)
             }
         }
         // MARK: - Obsługa wysuwanego arkusza szczegółów
@@ -104,12 +133,61 @@ struct ContentView: View {
             LocationDetailView(
                 location: location,
                 onGetDirections: {
-                    // Wywołanie funkcji liczącej trasę
                     calculateRoute(to: location)
                 }
             )
             .presentationDetents([.medium, .large]) // Pozwala wysunąć do połowy lub na cały ekran
             .presentationDragIndicator(.visible)    // Pasek do przeciągania
+        }
+        // MARK: - Arkusz wyszukiwania
+        .sheet(isPresented: $showSearchSheet) {
+            SearchLocationView()
+        }
+    }
+    
+    // MARK: - Funkcje pomocnicze
+    
+    private func updateCamera(to location: Location) {
+        withAnimation(.easeInOut(duration: 1.5)) {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: location.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.015, longitudeDelta: 0.015)
+            ))
+        }
+    }
+    
+    private func addCurrentLocation() {
+        guard let userLoc = locationManager.userLocation else {
+            locationManager.requestLocation()
+            return
+        }
+        
+        // Odwrócone geokodowanie, aby znaleźć nazwę miejsca
+        let geocoder = CLGeocoder()
+        let location = CLLocation(latitude: userLoc.latitude, longitude: userLoc.longitude)
+        
+        geocoder.reverseGeocodeLocation(location) { placemarks, error in
+            let placemark = placemarks?.first
+            let name = placemark?.name ?? "Moja lokalizacja"
+            let city = placemark?.locality ?? "Nieznane miasto"
+            let details = "Lokalizacja dodana ręcznie: \(Date().formatted())"
+            
+            let newLocation = Location(
+                name: name,
+                cityName: city,
+                details: details,
+                latitude: userLoc.latitude,
+                longitude: userLoc.longitude,
+                imageName: "location.circle.fill"
+            )
+            
+            modelContext.insert(newLocation)
+            
+            // Zaznacz nową lokalizację
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000) // Małe opóźnienie na odświeżenie listy
+                selectedLocation = newLocation
+            }
         }
     }
     
@@ -117,79 +195,35 @@ struct ContentView: View {
     private func calculateRoute(to destination: Location) {
         print("🚀 Rozpoczynam wyznaczanie trasy do: \(destination.name)")
         
-        // Sprawdź dostępność lokalizacji użytkownika
         guard let userLoc = locationManager.userLocation else {
             print("❌ Brak lokalizacji użytkownika - sprawdzam uprawnienia...")
-            // Spróbuj ponownie pobrać lokalizację
             locationManager.requestLocation()
             return
         }
         
-        print("✅ Lokalizacja użytkownika: \(userLoc.latitude), \(userLoc.longitude)")
-        print("📍 Cel: \(destination.coordinate.latitude), \(destination.coordinate.longitude)")
-        
         let request = MKDirections.Request()
-        
-        // Tworzenie map item dla źródła (lokalizacja użytkownika)
         let sourceLocation = CLLocation(latitude: userLoc.latitude, longitude: userLoc.longitude)
         
-        // Używamy nowego API dla iOS 26+, fallback do starego API
-        if #available(iOS 26.0, *) {
-            request.source = MKMapItem(location: sourceLocation, address: nil)
-        } else {
-            // Dla iOS < 26 używamy przestarzałego API
-            request.source = MKMapItem(placemark: MKPlacemark(coordinate: userLoc))
-        }
-        
-        // Tworzenie map item dla celu
-        let destinationLocation = CLLocation(
-            latitude: destination.coordinate.latitude,
-            longitude: destination.coordinate.longitude
-        )
-        
-        if #available(iOS 26.0, *) {
-            request.destination = MKMapItem(location: destinationLocation, address: nil)
-        } else {
-            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination.coordinate))
-        }
-        
+        // Dostosowanie do wersji iOS (uproszczone, zakładam nowsze SDK dostępne)
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: userLoc))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination.coordinate))
         request.transportType = .automobile
-        
-        print("🔄 Wysyłam żądanie wyznaczenia trasy...")
         
         Task {
             let directions = MKDirections(request: request)
             do {
                 let response = try await directions.calculate()
-                print("✅ Trasa wyznaczona pomyślnie!")
+                guard let route = response.routes.first else { return }
                 
-                guard let route = response.routes.first else {
-                    print("⚠️ Brak tras w odpowiedzi")
-                    return
-                }
-                
-                print("📏 Długość trasy: \(route.distance) metrów")
-                print("⏱️ Szacowany czas: \(route.expectedTravelTime) sekund")
-                
-                // Zapisujemy trasę do stanu - mapa sama ją narysuje
                 await MainActor.run {
                     withAnimation {
                         self.route = route
-                        
-                        // Ustaw kamerę tak, by widzieć całą trasę
                         let rect = route.polyline.boundingMapRect
                         self.cameraPosition = .rect(rect)
-                        print("📷 Kamera ustawiona na widok trasy")
                     }
                 }
             } catch {
                 print("❌ Błąd wyznaczania trasy: \(error.localizedDescription)")
-                print("🔍 Szczegóły błędu: \(error)")
-                
-                // Wyświetl bardziej szczegółowe informacje o błędzie
-                if let mkError = error as? MKError {
-                    print("MKError code: \(mkError.code.rawValue)")
-                }
             }
         }
     }
@@ -197,5 +231,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .modelContainer(for: Location.self, inMemory: true)
 }
-

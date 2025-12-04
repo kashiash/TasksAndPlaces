@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 // MARK: - Komponent A: Karta Lokalizacji (Carousel Card)
 // Styl: Nowoczesny, glassmorphism, lekkie zaokrąglenia (radius ~20px)
@@ -47,7 +48,8 @@ struct LocationCardView: View {
                     .foregroundStyle(.blue)
                 
                 // Długi opis (ograniczony do 2 linii na karcie)
-                Text(location.description)
+                // Używamy nowego pola `details` zamiast `description`
+                Text(location.details)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -58,9 +60,9 @@ struct LocationCardView: View {
                     onReadMore() // Wywołujemy akcję przekazaną z rodzica
                 } label: {
                     Text("Czytaj więcej")
-                        .frame(maxWidth: .infinity) // Rozciągnij przycisk
-                        .font(.caption)
-                        .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity) // Rozciągnij przycisk
+                    .font(.caption)
+                    .fontWeight(.semibold)
                 }
                 .buttonStyle(.borderedProminent) // Bardziej widoczny styl
                 .controlSize(.small)
@@ -73,12 +75,12 @@ struct LocationCardView: View {
         .background {
             // Materiał: UltraThinMaterial (efekt mrożonego szkła)
             RoundedRectangle(cornerRadius: 20)
-                .fill(.ultraThinMaterial)
+            .fill(.ultraThinMaterial)
         }
         .overlay {
             // Opcjonalne: Subtelna ramka dla lepszego efektu glassmorphism
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            .stroke(Color.white.opacity(0.2), lineWidth: 1)
         }
         // Wyraźny, miękki cień (drop-shadow) - odseparowanie karty od mapy
         .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 8)
@@ -91,10 +93,19 @@ struct LocationCardView: View {
 }
 
 #Preview {
-    ZStack {
+    let example = Location(
+        name: "Przykładowe Miejsce",
+        cityName: "Gliwice",
+        details: "To jest przykładowy opis miejsca do podglądu w Canvasie. Powinien być wystarczająco długi, by sprawdzić line limit.",
+        latitude: 50.2945,
+        longitude: 18.6714,
+        imageName: "building.columns"
+    )
+    
+    return ZStack {
         Color.gray.opacity(0.3)
         LocationCardView(
-            location: testLocations.first!,
+            location: example,
             isSelected: true,
             onReadMore: {
                 print("Preview: Czytaj więcej")
@@ -103,4 +114,3 @@ struct LocationCardView: View {
         .padding()
     }
 }
-
