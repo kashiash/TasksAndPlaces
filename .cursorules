@@ -1,0 +1,110 @@
+# Cursor Rules for Swift & SwiftUI Coding Assistant
+
+## Apple Compliance Requirements
+
+- **MUSISZ** stosować się do wszystkich wytycznych Apple:
+
+  - [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
+
+  - [Swift API Design Guidelines](https://www.swift.org/documentation/api-design-guidelines/)
+
+  - [App Store Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+
+  - [Privacy Requirements](https://developer.apple.com/app-store/review/guidelines/#privacy)
+
+- Zawsze używaj najnowszego iOS 18+ i Xcode 16+ z Swift 6.
+
+- Nigdy nie używaj private APIs ani undocumented metod.
+
+- Implementuj Privacy Manifest (`PrivacyInfo.xcprivacy`) dla wszystkich projektów.
+
+## General Guidelines
+
+- Swift 6 + SwiftUI 6 dla iOS 18+ capabilities.
+
+- English dla wszystkich nazw zmiennych, funkcji, typów i dokumentacji.
+
+- **Komunikacja z programistą TYLKO po polsku**.
+
+- Publiczne API dokumentuj `///` Swift DocC formatem.
+
+- Nigdy force unwrap (`!`); używaj `guard let` / `if let`.
+
+## Code Style (Apple Standards)
+
+```
+camelCase: userProfile, fetchUserData()
+
+PascalCase: UserProfileView, LocationManager
+```
+
+- Maks. 30 linii na funkcję.
+
+- `@MainActor` dla wszystkich View i UI updates.
+
+- `async/await` zamiast closures gdzie możliwe.
+
+## SwiftUI Specific Rules
+
+- `@State`, `@Binding`, `@Observable` (nie `@ObservedObject`).
+
+- Business logic w ViewModel, nie w View.
+
+- Native SwiftUI animations: `.animation(.spring())`.
+
+- Accessibility: `.accessibilityLabel()`, `.accessibilityHint()`.
+
+## GitHub Commit Standards
+
+```
+feat: add interactive map carousel
+
+fix: resolve map camera sync issue
+
+docs: update SwiftUI MapKit documentation
+
+refactor: extract map synchronization logic
+```
+
+- Conventional Commits format obowiązkowy.
+
+- Commit messages po angielsku, max 72 znaki.
+
+## Apple Privacy & Security
+
+```
+PrivacyInfo.xcprivacy dla każdego targetu:
+
+- NSPrivacyTracking → false
+
+- NSPrivacyCollectedDataTypes → minimalne
+
+- NSPrivacyAccessReason → konkretne uzasadnienie
+```
+
+- Używaj `AppTrackingTransparency` dla trackingu.
+
+- StoreKit 2 dla wszystkich zakupów in-app.
+
+## Communication Examples (PO POLSKU)
+
+```
+"Ten kod narusza HIG Apple §4.2. Zaimplementuj accessibility labels."
+
+"Potrzebny Privacy Manifest zgodnie z guideline 5.1.1."
+
+"Zalecam @Observable zamiast @ObservedObject dla iOS 18."
+```
+
+## Required Apple Links Checklist
+
+✅ [HIG](https://developer.apple.com/design/human-interface-guidelines/)  
+
+✅ [API Design](https://www.swift.org/documentation/api-design-guidelines/)  
+
+✅ [Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)  
+
+✅ [Privacy Manifest](https://developer.apple.com/documentation/bundleresources/privacy_manifest_files)
+
+**Przed każdym commitem: `pbpaste | grep -i "private\|undocumented\|force unwrap" || echo "OK"`**
+
