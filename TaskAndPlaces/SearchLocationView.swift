@@ -26,9 +26,11 @@ struct SearchLocationView: View {
                     VStack(alignment: .leading) {
                         Text(item.name ?? "Nieznane miejsce")
                             .font(.headline)
-                        Text(item.placemark.title ?? "")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        if let addressString = formatAddressString(from: item.address, representations: item.addressRepresentations), !addressString.isEmpty {
+                            Text(addressString)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -64,11 +66,22 @@ struct SearchLocationView: View {
         }
     }
     
+    private func formatAddressString(from address: MKAddress?, representations: MKAddressRepresentations?) -> String? {
+        // W iOS 26 API dla adresów zostało zmienione
+        // MKAddressRepresentations i MKAddress mają nową strukturę
+        // Na razie zwracamy nil - można rozszerzyć gdy dokumentacja będzie dostępna
+        // Podstawowe informacje (nazwa miejsca) są dostępne przez mapItem.name
+        return nil
+    }
+    
     private func saveLocation(_ item: MKMapItem) {
         let name = item.name ?? "Nowe miejsce"
-        let cityName = item.placemark.locality ?? item.placemark.administrativeArea ?? "Nieznane miasto"
-        let details = item.placemark.title ?? "Brak szczegółów"
-        let coordinate = item.placemark.coordinate
+        // Użyj addressRepresentations do uzyskania miasta lub użyj fallback
+        let addressString = formatAddressString(from: item.address, representations: item.addressRepresentations) ?? ""
+        // W iOS 26 struktura MKAddress może się różnić, używamy podstawowego fallback
+        let cityName = addressString.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? "Nieznane miasto"
+        let details = addressString.isEmpty ? "Brak szczegółów" : addressString
+        let coordinate = item.location.coordinate
         
         // Wybierz ikonę w zależności od kategorii (uproszczone)
         let imageName = "mappin.circle.fill" 

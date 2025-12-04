@@ -296,41 +296,71 @@ Circle()
 
 ## Część 4: Aktualizacje i Rozszerzenia
 
-### Rozszerzony Model Danych
+### Migracja do SwiftData
 
-**Zmiany w strukturze `Location`:**
+**Zmiany w modelu danych:**
 
-Projekt został rozszerzony o dodatkowe pole `cityName`, co pozwala na lepszą organizację i prezentację danych przy większej liczbie lokalizacji.
+Projekt został zmigrowany z tablicy statycznej do persystencji SwiftData, co umożliwia zapisywanie, edycję i usuwanie lokalizacji.
 
-**Struktura:**
+**Struktura (przed):**
 ```swift
 struct Location: Identifiable, Hashable {
     let id = UUID()
-    let name: String              // Główna nazwa miejsca
-    let cityName: String          // NOWE: Nazwa miasta (np. "Gliwice")
-    let description: String       // Rozszerzony: Długi opis miejsca
+    let name: String
+    let cityName: String
+    let description: String
     let coordinate: CLLocationCoordinate2D
-    let imageName: String         // Nazwa ikony SF Symbols
+    let imageName: String
+}
+```
+
+**Struktura (obecna):**
+```swift
+@Model
+final class Location {
+    var name: String              // Główna nazwa miejsca
+    var cityName: String          // Nazwa miasta (np. "Gliwice")
+    var details: String           // Długi opis miejsca (zmienione z description)
+    var latitude: Double          // Szerokość geograficzna
+    var longitude: Double         // Długość geograficzna
+    var imageName: String         // Nazwa ikony SF Symbols
+    var createdAt: Date           // Data utworzenia (automatycznie)
+    
+    // Computed property dla kompatybilności z MapKit
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
 }
 ```
 
 **Korzyści:**
-- Lepsza organizacja danych przy większej liczbie lokalizacji
-- Możliwość grupowania lokalizacji według miasta
-- Dodatkowy kontekst wizualny w interfejsie użytkownika
+- Persystencja danych między sesjami aplikacji
+- Możliwość dodawania, edycji i usuwania lokalizacji
+- Automatyczne zarządzanie relacjami i indeksami
+- Lepsza wydajność przy większej liczbie danych
+- Integracja z systemem wyszukiwania i filtrowania
 
 ---
 
-### Zwiększona Liczba Lokalizacji
-
-**Zmiana:** Projekt zawiera teraz **17 lokalizacji** zamiast 3 przykładowych.
+### System Persystencji SwiftData
 
 **Źródło danych:**
-- Tablica `testLocations` (zamiast `locations`)
-- Lokalizacje z regionu Górnego Śląska:
+- `@Query(sort: \Location.createdAt, order: .reverse) private var locations: [Location]`
+- Dane są pobierane z bazy SwiftData, nie z tablicy statycznej
+- Automatyczne sortowanie według daty utworzenia (najnowsze pierwsze)
+
+**Seedowanie danych:**
+- `DataLoader.shared.seedData(context:)` - wypełnia bazę danymi początkowymi
+- Sprawdza czy baza jest pusta przed seedowaniem
+- 17 lokalizacji z regionu Górnego Śląska:
   - **Gliwice:** 8 lokalizacji (Radiostacja, Rynek, Palmiarnia, Arena, Politechnika, Zamek, Lotnisko, Nowe Gliwice)
   - **Katowice:** 9 lokalizacji (Spodek, Muzeum Śląskie, NOSPR, MCK, Nikiszowiec, Dolina Trzech Stawów, Ulica Mariacka, Park Kościuszki, Pomnik Powstańców, Galeria Katowicka)
   - **Okolice:** 2 lokalizacje (Park Śląski, Szyb Maciej)
+
+**Dodawanie lokalizacji:**
+- **Bieżąca lokalizacja:** `addCurrentLocation()` - używa `LocationManager`
+- **Wyszukiwanie:** `SearchLocationView` - używa `MKLocalSearch`
+- **Kliknięcie na mapie:** `handleMapTap(at:)` - używa odwróconego geokodowania
 
 **Wpływ na parametry:**
 - **Początkowy span:** `0.1` (zwiększony z `0.05`) - szerszy widok na start
@@ -348,12 +378,13 @@ struct Location: Identifiable, Hashable {
    - Format: uppercase, niebieski kolor, `.caption` font
 
 2. **Rozszerzony opis:**
-   - `description` jest teraz dłuższym opisem miejsca (nie tylko "Miasto, Kraj")
+   - `details` jest teraz dłuższym opisem miejsca (zmienione z `description`)
    - Ograniczony do 2 linii w karcie (`.lineLimit(2)`)
 
-3. **Zmiana przycisku:**
-   - Tekst: "Więcej" (zamiast "Zobacz więcej")
-   - Styl: `.bordered` (zamiast `.borderedProminent`)
+3. **Przycisk akcji:**
+   - Tekst: "Czytaj więcej"
+   - Styl: `.borderedProminent` (bardziej widoczny)
+   - Rozciąga się na całą szerokość (`frame(maxWidth: .infinity)`)
 
 **Układ treści:**
 ```
@@ -361,9 +392,75 @@ struct Location: Identifiable, Hashable {
 │ [Ikona]  Tytuł (bold)              │
 │          MIASTO (uppercase, blue)  │
 │          Opis (2 linie, secondary) │
-│          [Więcej] (button)         │
+│          [Czytaj więcej] (button)  │
 └─────────────────────────────────────┘
 ```
+
+### Nowe Funkcjonalności
+
+**1. Wyszukiwanie Lokalizacji (`SearchLocationView`)**
+
+**Technika:** `MKLocalSearch` API do wyszukiwania miejsc
+
+**Implementacja:**
+```swift
+let request = MKLocalSearch.Request()
+request.naturalLanguageQuery = query
+request.resultTypes = .pointOfInterest
+
+let search = MKLocalSearch(request: request)
+search.start { response, error in
+    guard let response = response else { return }
+    self.searchResults = response.mapItems
+}
+```
+
+**Funkcje:**
+- Wyszukiwanie przez natural language query
+- Automatyczne zapisywanie wybranej lokalizacji do bazy
+- Odwrócone geokodowanie dla nazwy miejsca
+
+**2. Edycja i Usuwanie Lokalizacji**
+
+**Technika:** `@Bindable` property wrapper dla dwukierunkowego wiązania
+
+**Implementacja:**
+```swift
+@Bindable var location: Location
+
+// W trybie edycji:
+TextField("Nazwa", text: $location.name)
+TextEditor(text: $location.details)
+
+// Usuwanie:
+modelContext.delete(location)
+```
+
+**Funkcje:**
+- Edycja nazwy, miasta i opisu miejsca
+- Automatyczne zapisywanie zmian w bazie SwiftData
+- Usuwanie lokalizacji z potwierdzeniem
+
+**3. Dodawanie Lokalizacji przez Kliknięcie na Mapie**
+
+**Technika:** `MapReader` i `onTapGesture` do wykrywania kliknięć
+
+**Implementacja:**
+```swift
+MapReader { proxy in
+    Map(...)
+        .onTapGesture { position in
+            if let coordinate = proxy.convert(position, from: .local) {
+                handleMapTap(at: coordinate)
+            }
+        }
+}
+```
+
+**Funkcje:**
+- Wykrywanie kliknięć na mapie
+- Odwrócone geokodowanie dla nazwy miejsca
+- Alert z potwierdzeniem przed dodaniem
 
 ---
 
@@ -375,12 +472,24 @@ Projekt wykorzystuje nowoczesne podejście SwiftUI z:
 - **Reaktywnymi efektami ubocznymi** (`.onChange`)
 - **Kompozycją komponentów** (Composition Pattern)
 - **Płynnymi animacjami** (deklaratywne + imperatywne)
+- **Persystencją danych** (SwiftData)
 
 **Aktualne funkcje:**
-- 17 lokalizacji z regionu Górnego Śląska
-- Rozszerzony model danych z `cityName`
+- 17 lokalizacji początkowych z regionu Górnego Śląska
+- Rozszerzony model danych z `cityName` i `details`
+- Persystencja danych w SwiftData
+- Dodawanie lokalizacji (bieżąca lokalizacja, wyszukiwanie, kliknięcie na mapie)
+- Edycja i usuwanie lokalizacji
 - Ulepszony interfejs karty z dodatkowym kontekstem
 - Zoptymalizowane parametry animacji dla większej liczby punktów
+- Automatyczne seedowanie danych początkowych
 
-Wszystkie te techniki współpracują, tworząc spójny, przewidywalny interfejs użytkownika.
+**Nowe wzorce:**
+- `@Model` - adnotacja SwiftData dla persystencji
+- `@Query` - deklaratywne zapytania do bazy danych
+- `@Environment(\.modelContext)` - dostęp do kontekstu bazy danych
+- `@Bindable` - dwukierunkowe wiązanie dla edycji danych
+- `MKLocalSearch` - wyszukiwanie miejsc przez MapKit
+
+Wszystkie te techniki współpracują, tworząc spójny, przewidywalny interfejs użytkownika z pełną funkcjonalnością CRUD (Create, Read, Update, Delete).
 

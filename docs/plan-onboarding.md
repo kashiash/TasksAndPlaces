@@ -239,13 +239,17 @@ Map(position: $cameraPosition) {
 
 ```
 TaskAndPlaces/
-├── TaskAndPlacesApp.swift          # Punkt wejścia aplikacji
+├── TaskAndPlacesApp.swift          # Punkt wejścia aplikacji (konfiguracja SwiftData)
 ├── ContentView.swift               # Główny widok (zarządza stanem)
-├── Location.swift                  # Model danych
+├── Location.swift                  # Model danych SwiftData (@Model)
 ├── LocationCardView.swift          # Komponent: Karta w karuzeli
 ├── LocationAnnotationView.swift    # Komponent: Znacznik na mapie
-├── LocationDetailView.swift        # Komponent: Arkusz szczegółów miejsca
+├── LocationDetailView.swift        # Komponent: Arkusz szczegółów miejsca (z edycją)
 ├── LocationManager.swift           # Menedżer lokalizacji użytkownika
+├── SearchLocationView.swift        # Widok wyszukiwania i dodawania miejsc
+├── DataLoader.swift                # Klasa do seedowania danych początkowych
+├── VehicleData.swift               # Model danych pojazdu (funkcjonalność dodatkowa)
+├── VehicleDocumentAztecDecoder.swift # Dekoder dokumentów pojazdu (funkcjonalność dodatkowa)
 ├── Info.plist                      # Konfiguracja (uprawnienia lokalizacji)
 └── Assets.xcassets/                # Zasoby (ikony, kolory)
 ```
@@ -253,28 +257,42 @@ TaskAndPlaces/
 ### Opis Plików
 
 **`Location.swift`**
-- Model danych: struktura `Location`
-- Przykładowe dane: tablica `testLocations` (20 lokalizacji z Górnego Śląska)
-- Protokoły: `Identifiable`, `Hashable`
+- Model danych: klasa `Location` z adnotacją `@Model` (SwiftData)
+- Persystencja: Dane są zapisywane w bazie SwiftData
+- Protokoły: Automatycznie `Identifiable` przez SwiftData
 - Pola modelu:
-  - `id: UUID` - unikalny identyfikator (generowany automatycznie)
   - `name: String` - główna nazwa miejsca
   - `cityName: String` - nazwa miasta (np. "Gliwice", "Katowice - Centrum")
-  - `description: String` - długi opis miejsca z ciekawostkami historycznymi
-  - `coordinate: CLLocationCoordinate2D` - współrzędne geograficzne
+  - `details: String` - długi opis miejsca z ciekawostkami historycznymi (zmienione z `description`)
+  - `latitude: Double` - szerokość geograficzna
+  - `longitude: Double` - długość geograficzna
   - `imageName: String` - nazwa ikony SF Symbols
+  - `createdAt: Date` - data utworzenia (automatycznie ustawiana)
+- Computed property: `coordinate: CLLocationCoordinate2D` - zwraca współrzędne z `latitude` i `longitude`
 
 **`ContentView.swift`**
 - Główny kontroler widoku
-- Zarządza stanem (`@State`, `@StateObject`)
+- Zarządza stanem (`@State`, `@Query`, `@Environment`)
 - Koordynuje synchronizację między mapą a karuzelą
 - Zarządza nawigacją i wyznaczaniem trasy
+- Dane SwiftData:
+  - `@Environment(\.modelContext) private var modelContext` - kontekst bazy danych
+  - `@Query(sort: \Location.createdAt, order: .reverse) private var locations: [Location]` - zapytanie do bazy
 - Stan aplikacji:
-  - `@StateObject private var locationManager: LocationManager` - lokalizacja użytkownika
+  - `@State private var locationManager: LocationManager` - lokalizacja użytkownika
   - `@State private var selectedLocation: Location?` - wybrana lokalizacja
   - `@State private var sheetLocation: Location?` - lokalizacja w arkuszu szczegółów
+  - `@State private var showSearchSheet: Bool` - stan arkusza wyszukiwania
   - `@State private var route: MKRoute?` - wyznaczona trasa
   - `@State private var cameraPosition: MapCameraPosition` - pozycja kamery
+  - `@State private var tappedCoordinate: CLLocationCoordinate2D?` - kliknięty punkt na mapie
+  - `@State private var showAddLocationAlert: Bool` - alert dodawania lokalizacji
+- Funkcje:
+  - `addCurrentLocation()` - dodaje lokalizację użytkownika
+  - `addNewLocation(at:)` - dodaje lokalizację z klikniętego punktu na mapie
+  - `handleMapTap(at:)` - obsługuje kliknięcie na mapie
+  - `updateCamera(to:)` - aktualizuje pozycję kamery
+  - `calculateRoute(to:)` - wyznacza trasę do miejsca
 
 **`LocationCardView.swift`**
 - Komponent UI: karta w karuzeli
@@ -292,16 +310,21 @@ TaskAndPlaces/
 
 **`LocationDetailView.swift`**
 - Komponent UI: arkusz szczegółów miejsca (Sheet)
-- Parametry: `location`, `onGetDirections: () -> Void`
+- Parametry: `@Bindable var location: Location`, `onGetDirections: () -> Void`
 - Funkcje:
   - Wyświetla pełny opis miejsca (bez ograniczenia linii)
   - Duże zdjęcie na górze z gradientem
   - Wyświetla współrzędne geograficzne
   - Przycisk "Prowadź do celu" do wyznaczania trasy
   - ScrollView dla długich tekstów
+  - **Tryb edycji:** Możliwość edycji nazwy, miasta i opisu miejsca
+  - **Usuwanie:** Przycisk usuwania lokalizacji (w trybie edycji)
 - Modyfikatory prezentacji:
   - `.presentationDetents([.medium, .large])` - wysuwanie do połowy lub pełnego ekranu
   - `.presentationDragIndicator(.visible)` - pasek do przeciągania
+- Stan:
+  - `@State private var isEditing: Bool` - tryb edycji
+  - `@Environment(\.modelContext) private var modelContext` - kontekst bazy danych
 
 **`LocationManager.swift`**
 - Klasa zarządzająca lokalizacją użytkownika
@@ -311,6 +334,37 @@ TaskAndPlaces/
   - Prośba o zgodę na lokalizację (`requestWhenInUseAuthorization`)
   - Automatyczne aktualizowanie lokalizacji (`startUpdatingLocation`)
   - Obsługa błędów i zmian uprawnień
+
+**`SearchLocationView.swift`**
+- Widok wyszukiwania i dodawania nowych lokalizacji
+- Funkcje:
+  - Wyszukiwanie miejsc przez `MKLocalSearch`
+  - Wyświetlanie wyników wyszukiwania w liście
+  - Automatyczne zapisywanie wybranej lokalizacji do bazy SwiftData
+  - Odwrócone geokodowanie dla nazwy miejsca
+- Stan:
+  - `@State private var searchText: String` - tekst wyszukiwania
+  - `@State private var searchResults: [MKMapItem]` - wyniki wyszukiwania
+  - `@Environment(\.modelContext) private var modelContext` - kontekst bazy danych
+- Interfejs:
+  - `.searchable()` - pole wyszukiwania
+  - Lista wyników z możliwością wyboru
+  - Przycisk "Anuluj" w toolbarze
+
+**`DataLoader.swift`**
+- Klasa do seedowania danych początkowych
+- Singleton: `static let shared = DataLoader()`
+- Funkcje:
+  - `seedData(context:)` - wypełnia bazę danymi początkowymi (17 lokalizacji z Górnego Śląska)
+  - Sprawdza czy baza jest pusta przed seedowaniem
+  - Automatyczne zapisywanie do kontekstu SwiftData
+- Użycie: Wywoływane przy pierwszym uruchomieniu aplikacji
+
+**`VehicleData.swift` i `VehicleDocumentAztecDecoder.swift`**
+- Funkcjonalność dodatkowa niezwiązana z główną funkcjonalnością aplikacji
+- `VehicleData`: Model danych pojazdu z dekodowaniem z formatu Aztec
+- `VehicleDocumentAztecDecoder`: Dekoder dokumentów pojazdu (format Aztec/Base64)
+- Uwaga: Te komponenty mogą być używane w przyszłości lub są częścią większego projektu
 
 **`Info.plist`**
 - Zawiera klucz `NSLocationWhenInUseUsageDescription`
@@ -322,27 +376,46 @@ TaskAndPlaces/
 
 ### Zadanie 1: Dodanie Nowej Lokalizacji
 
-**Krok 1:** Edytuj `Location.swift`
+**Metoda 1: Przez interfejs użytkownika (Zalecane)**
+
+1. **Dodaj z bieżącej lokalizacji:**
+   - Kliknij przycisk "+" w prawym górnym rogu
+   - Wybierz "Bieżąca lokalizacja"
+   - Lokalizacja zostanie automatycznie dodana do bazy
+
+2. **Dodaj przez wyszukiwanie:**
+   - Kliknij przycisk "+" w prawym górnym rogu
+   - Wybierz "Szukaj adresu"
+   - Wpisz nazwę miejsca lub adres
+   - Wybierz wynik z listy
+   - Lokalizacja zostanie automatycznie zapisana
+
+3. **Dodaj przez kliknięcie na mapie:**
+   - Kliknij dowolne miejsce na mapie
+   - W wyświetlonym alercie wybierz "Dodaj"
+   - Lokalizacja zostanie dodana z automatycznym geokodowaniem
+
+**Metoda 2: Programatycznie (dla deweloperów)**
+
+**Krok 1:** Użyj `DataLoader` lub dodaj bezpośrednio do kontekstu
 ```swift
-let testLocations = [
-    // ... istniejące lokalizacje (20 lokalizacji z Górnego Śląska) ...
-    Location(
-        name: "Nowa Lokalizacja",
-        cityName: "Gliwice",  // ← Nazwa miasta (np. "Gliwice", "Katowice - Centrum")
-        description: "Długi opis miejsca z ciekawostkami historycznymi, który może zawierać wiele informacji o historii, znaczeniu i charakterystyce tego miejsca. Opis powinien być szczegółowy i interesujący dla użytkownika.",
-        coordinate: CLLocationCoordinate2D(latitude: 50.0, longitude: 18.0),
-        imageName: "star.fill"  // ← Nazwa ikony SF Symbols
-    )
-]
+let newLocation = Location(
+    name: "Nowa Lokalizacja",
+    cityName: "Gliwice",
+    details: "Długi opis miejsca z ciekawostkami historycznymi...",
+    latitude: 50.0,
+    longitude: 18.0,
+    imageName: "star.fill"
+)
+
+modelContext.insert(newLocation)
 ```
 
 **Uwaga:** 
-- Używamy `testLocations` (nie `locations`)
-- Model wymaga 5 pól: `name`, `cityName`, `description`, `coordinate`, `imageName`
-- `description` powinien być dłuższym opisem z ciekawostkami historycznymi
-- `cityName` może zawierać dodatkowy kontekst (np. "Katowice - Strefa Kultury")
-
-**Krok 2:** Uruchom aplikację - lokalizacja pojawi się automatycznie (dzięki `ForEach`)
+- Model wymaga 6 pól: `name`, `cityName`, `details`, `latitude`, `longitude`, `imageName`
+- `details` (nie `description`) - długi opis miejsca
+- `createdAt` jest ustawiane automatycznie
+- Dane są zapisywane w bazie SwiftData
 
 ---
 
@@ -391,16 +464,29 @@ withAnimation(.easeInOut(duration: 1.5)) {
 
 ---
 
-### Zadanie 4: Otwieranie Szczegółów Miejsca
+### Zadanie 4: Otwieranie i Edycja Szczegółów Miejsca
 
 **Aktualna implementacja:**
 Przycisk "Czytaj więcej" w `LocationCardView` otwiera arkusz szczegółów (`LocationDetailView`).
 
 **Jak to działa:**
-1. Użytkownik klika "Czytaj więcej" na karcie
+1. Użytkownik klika "Czytaj więcej" na karcie lub kliknie w samą kartę
 2. `onReadMore()` jest wywoływane
 3. `ContentView` ustawia `sheetLocation = location`
 4. Arkusz wysuwa się z dołu ekranu (`.sheet()`)
+
+**Edycja lokalizacji:**
+1. Otwórz arkusz szczegółów
+2. Kliknij przycisk "Edytuj" w prawym górnym rogu
+3. Zmień nazwę, miasto lub opis
+4. Kliknij "Gotowe" aby zapisać zmiany
+5. Zmiany są automatycznie zapisywane w bazie SwiftData
+
+**Usuwanie lokalizacji:**
+1. Otwórz arkusz szczegółów
+2. Przejdź do trybu edycji
+3. Kliknij przycisk "Usuń" w lewym górnym rogu
+4. Lokalizacja zostanie usunięta z bazy danych
 
 **Edycja akcji:**
 ```swift
@@ -419,6 +505,7 @@ Przycisk "Czytaj więcej" w `LocationCardView` otwiera arkusz szczegółów (`Lo
 - Przycisk ma tekst "Czytaj więcej" (nie "Więcej")
 - Styl przycisku: `.borderedProminent` (bardziej widoczny)
 - Przycisk rozciąga się na całą szerokość (`frame(maxWidth: .infinity)`)
+- Lokalizacja jest `@Bindable`, więc zmiany są automatycznie synchronizowane
 
 ---
 
@@ -683,11 +770,16 @@ TabView(selection: $selectedLocation) {
 - [ ] Zrozumiano przepływ danych (Single Source of Truth)
 - [ ] Zrozumiano mechanizm `.tag()`
 - [ ] Zrozumiano `.onChange` dla efektów ubocznych
+- [ ] Zrozumiano SwiftData i `@Model`
+- [ ] Zrozumiano `@Query` i `@Environment(\.modelContext)`
 - [ ] Przetestowano synchronizację (karuzela ↔ mapa)
 - [ ] Przetestowano animacje (lot kamery, pulsowanie)
-- [ ] Przetestowano arkusz szczegółów (otwieranie, zamykanie)
+- [ ] Przetestowano arkusz szczegółów (otwieranie, zamykanie, edycja)
+- [ ] Przetestowano dodawanie lokalizacji (bieżąca lokalizacja, wyszukiwanie, kliknięcie na mapie)
+- [ ] Przetestowano edycję i usuwanie lokalizacji
 - [ ] Przetestowano wyznaczanie trasy (wymaga lokalizacji)
 - [ ] Sprawdzono uprawnienia lokalizacji (Info.plist)
+- [ ] Sprawdzono seedowanie danych początkowych (DataLoader)
 
 ---
 
@@ -697,27 +789,45 @@ TabView(selection: $selectedLocation) {
 
 ### Model Danych
 
-**Struktura `Location` zawiera teraz 5 pól:**
+**Klasa `Location` (SwiftData @Model) zawiera 7 pól:**
 ```swift
-struct Location {
-    let name: String              // Główna nazwa
-    let cityName: String          // NOWE: Nazwa miasta
-    let description: String       // Rozszerzony opis
-    let coordinate: CLLocationCoordinate2D
-    let imageName: String
+@Model
+final class Location {
+    var name: String              // Główna nazwa
+    var cityName: String          // Nazwa miasta
+    var details: String           // Rozszerzony opis (zmienione z description)
+    var latitude: Double          // Szerokość geograficzna
+    var longitude: Double         // Długość geograficzna
+    var imageName: String         // Nazwa ikony SF Symbols
+    var createdAt: Date           // Data utworzenia (automatycznie)
+    
+    // Computed property
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
 }
 ```
 
-**Uwaga:** Przy dodawaniu nowych lokalizacji pamiętaj o wszystkich 5 polach!
+**Uwaga:** 
+- Model jest teraz klasą z `@Model` (SwiftData), nie strukturą
+- Pola są `var`, nie `let` (wymagane przez SwiftData)
+- `details` (nie `description`) - nazwa pola została zmieniona
+- `createdAt` jest ustawiane automatycznie w inicjalizatorze
+- Dane są persystowane w bazie SwiftData
 
 ---
 
 ### Źródło Danych
 
-- **Używamy:** `testLocations` (nie `locations`)
-- **Liczba lokalizacji:** 20 (Gliwice, Katowice, okolice)
+- **Używamy:** `@Query` do pobierania danych z SwiftData (nie `testLocations`)
+- **Liczba lokalizacji początkowych:** 17 (Gliwice, Katowice, okolice)
 - **Region:** Górny Śląsk
 - **Zawartość:** Każda lokalizacja ma pełny opis historyczny i ciekawostki
+- **Seedowanie:** `DataLoader.shared.seedData()` wypełnia bazę danymi początkowymi przy pierwszym uruchomieniu
+- **Dodawanie:** Użytkownik może dodawać nowe lokalizacje przez:
+  - Bieżącą lokalizację
+  - Wyszukiwanie adresu
+  - Kliknięcie na mapie
 
 ---
 
@@ -755,11 +865,16 @@ struct Location {
 - Przycisk "Prowadź do celu" do wyznaczania trasy
 - ScrollView dla długich tekstów
 - Możliwość wysunięcia do połowy lub pełnego ekranu
+- **Tryb edycji:** Edycja nazwy, miasta i opisu miejsca
+- **Usuwanie:** Przycisk usuwania lokalizacji (w trybie edycji)
 
 **Interakcje:**
 - Przeciąganie w dół zamyka arkusz
-- Przycisk "Zamknij" w toolbarze
+- Przycisk "Zamknij" w toolbarze (tylko w trybie podglądu)
+- Przycisk "Edytuj/Gotowe" przełącza tryb edycji
+- Przycisk "Usuń" usuwa lokalizację z bazy (w trybie edycji)
 - Przycisk "Prowadź do celu" zamyka arkusz i wyznacza trasę
+- Zmiany w trybie edycji są automatycznie zapisywane w bazie SwiftData
 
 ---
 
@@ -797,13 +912,16 @@ Projekt wykorzystuje nowoczesne podejście SwiftUI z:
 - `MapCameraPosition` - deklaratywne sterowanie kamerą
 
 **Aktualne funkcje:**
-- 20 lokalizacji z Górnego Śląska z pełnymi opisami historycznymi
-- Rozszerzony model danych (`cityName`, `description`)
-- Arkusz szczegółów z pełnym opisem miejsca
+- 17 lokalizacji początkowych z Górnego Śląska z pełnymi opisami historycznymi
+- Rozszerzony model danych (`cityName`, `details`) z persystencją SwiftData
+- Arkusz szczegółów z pełnym opisem miejsca i możliwością edycji
 - System nawigacji - wyznaczanie trasy do miejsca
 - Lokalizacja użytkownika i rysowanie trasy na mapie
+- **Dodawanie lokalizacji:** Bieżąca lokalizacja, wyszukiwanie, kliknięcie na mapie
+- **Edycja i usuwanie:** Możliwość modyfikacji i usuwania lokalizacji
 - Ulepszony interfejs z dodatkowym kontekstem
 - Zoptymalizowane animacje dla większej liczby punktów
+- Automatyczne seedowanie danych początkowych przy pierwszym uruchomieniu
 
 Jeśli masz pytania, skontaktuj się z zespołem lub sprawdź dokumentację techniczną (`analiza-techniczna.md`).
 

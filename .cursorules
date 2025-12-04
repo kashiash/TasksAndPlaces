@@ -18,6 +18,8 @@
 
 - Implementuj Privacy Manifest (`PrivacyInfo.xcprivacy`) dla wszystkich projektów.
 
+- jesli w trakcie zmiany kodu, poprawy bledow chcesz zminic framework, zapytaj njapierw czy mozesz go zminic. uzuasadnij zmiane i przekonaj mnie do tego. probowanie na glupoa nie wchodzi w gre. chce dostac info na zmiane dlatego ze, jak mas zkilka do wybory wybieraj najnowszy. unikaj framerokow deprecated, chyba ze juz dostales kod z takim frameworkiem, to uzywaj tego co jest. chyba ze ma braki i tezba go zmienic na lepszy nowszy.
+
 ## General Guidelines
 
 - Swift 6 + SwiftUI 6 dla iOS 18+ capabilities.

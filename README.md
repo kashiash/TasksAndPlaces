@@ -19,21 +19,34 @@ Aplikacja SwiftUI do przeglądania i nawigacji do ciekawych miejsc w Gliwicach, 
    - Niestandardowe znaczniki miejsc
    - Płynne animacje kamery przy przełączaniu lokalizacji
    - Wyświetlanie aktualnej pozycji użytkownika
+   - Dodawanie lokalizacji przez kliknięcie na mapie
 
 2. **Karuzela kart**
    - Przewijalne karty z podstawowymi informacjami o miejscach
    - Synchronizacja z wyborem na mapie
    - Szybki dostęp do szczegółów miejsca
 
-3. **Wyznaczanie tras**
+3. **Zarządzanie lokalizacjami**
+   - Dodawanie lokalizacji (bieżąca lokalizacja, wyszukiwanie, kliknięcie na mapie)
+   - Edycja nazwy, miasta i opisu miejsca
+   - Usuwanie lokalizacji z potwierdzeniem
+   - Persystencja danych w SwiftData
+
+4. **Wyszukiwanie miejsc**
+   - Wyszukiwanie adresów i miejsc przez MapKit
+   - Automatyczne zapisywanie wybranych lokalizacji
+   - Lista wyników z możliwością wyboru
+
+5. **Wyznaczanie tras**
    - Automatyczne obliczanie trasy samochodowej
    - Wizualizacja trasy na mapie
    - Automatyczne dostosowanie widoku kamery do całej trasy
 
-4. **Szczegółowe widoki**
+6. **Szczegółowe widoki**
    - Pełne opisy miejsc
    - Przycisk do wyznaczania trasy
    - Wysuwany arkusz z możliwością rozszerzenia
+   - Tryb edycji z możliwością modyfikacji danych
 
 ## Wymagania
 
@@ -53,15 +66,19 @@ Szczegółowa dokumentacja projektu znajduje się w katalogu `docs/`:
 ```
 TaskAndPlaces/
 ├── TaskAndPlaces/
-│   ├── TaskAndPlacesApp.swift      # Główny plik aplikacji
-│   ├── ContentView.swift            # Główny widok z mapą i karuzelą
-│   ├── Location.swift                # Model danych lokalizacji
-│   ├── LocationManager.swift         # Menedżer lokalizacji użytkownika
-│   ├── LocationCardView.swift       # Widok karty miejsca
-│   ├── LocationDetailView.swift     # Szczegółowy widok miejsca
-│   └── LocationAnnotationView.swift # Niestandardowy widok znacznika
-├── docs/                             # Dokumentacja projektu
-└── README.md                         # Ten plik
+│   ├── TaskAndPlacesApp.swift          # Główny plik aplikacji (konfiguracja SwiftData)
+│   ├── ContentView.swift                # Główny widok z mapą i karuzelą
+│   ├── Location.swift                   # Model danych lokalizacji (SwiftData @Model)
+│   ├── LocationManager.swift            # Menedżer lokalizacji użytkownika
+│   ├── LocationCardView.swift           # Widok karty miejsca
+│   ├── LocationDetailView.swift         # Szczegółowy widok miejsca (z edycją)
+│   ├── LocationAnnotationView.swift     # Niestandardowy widok znacznika
+│   ├── SearchLocationView.swift         # Widok wyszukiwania i dodawania miejsc
+│   ├── DataLoader.swift                 # Klasa do seedowania danych początkowych
+│   ├── VehicleData.swift                # Model danych pojazdu (funkcjonalność dodatkowa)
+│   └── VehicleDocumentAztecDecoder.swift # Dekoder dokumentów pojazdu (funkcjonalność dodatkowa)
+├── docs/                                 # Dokumentacja projektu
+└── README.md                             # Ten plik
 ```
 
 ## Technologie
@@ -69,7 +86,8 @@ TaskAndPlaces/
 - **SwiftUI** - Framework UI
 - **MapKit** - Mapy i nawigacja
 - **CoreLocation** - Lokalizacja użytkownika
-- **SwiftData** - Persystencja danych (przygotowane do przyszłego użycia)
+- **SwiftData** - Persystencja danych (aktywna)
+- **MKLocalSearch** - Wyszukiwanie miejsc i adresów
 
 ## Źródła
 
